@@ -1,3 +1,7 @@
+import tqdm
+import numpy as np
+from codes import ToricCode
+from neural import create_model, data_generator, do_normcenterstab, undo_normcentererr, smart_sample
 import argparse
 
 parser = argparse.ArgumentParser(description='Train a neural network to decode a code.',
@@ -48,11 +52,6 @@ parser.add_argument('--Xstab', action='store_true',
 args = parser.parse_args()
 print(args)
 
-from neural import create_model, data_generator, do_normcenterstab, undo_normcentererr, smart_sample
-from codes import ToricCode
-import numpy as np
-import tqdm
-
 
 if args.trainset:
     f = np.load(args.trainset)
@@ -76,20 +75,21 @@ model = create_model(L=args.dist,
                      learning_rate=args.learningrate,
                      normcentererr_p=args.prob if args.normcentererr else None,
                      batchnorm=args.batchnorm
-                    )
+                     )
 L = args.dist
 code = ToricCode(L)
 out_dimZ = 2*L**2 * args.Zstab
 out_dimX = 2*L**2 * args.Xstab
 in_dim = L**2 * (args.Xstab+args.Zstab)
-H = code.H(args.Zstab,args.Xstab)
+H = code.H(args.Zstab, args.Xstab)
 
 
 if args.load:
     model.load_weights(args.load)
 if args.epochs:
     if args.trainset:
-        raise NotImplementedError("This is still using the OLD keras API. Update it!")
+        raise NotImplementedError(
+            "This is still using the OLD keras API. Update it!")
         x_train = []
         y_train = []
         if args.Zstab:
@@ -104,7 +104,7 @@ if args.epochs:
                          nb_epoch=args.epochs,
                          batch_size=args.batch,
                          validation_data=(x_test, y_test)
-                        )
+                         )
     else:
         dat = data_generator(H, out_dimZ, out_dimX, in_dim, args.prob, args.batch,
                              normcenterstab=args.normcenterstab, normcentererr=args.normcentererr)
@@ -113,12 +113,13 @@ if args.epochs:
         hist = model.fit(dat, steps_per_epoch=args.onthefly[0]//args.batch, epochs=args.epochs,
                          validation_data=val, validation_steps=args.onthefly[1]//args.batch)
     # Add .weights.h5 extension for Keras 3.x compatibility
-    weights_filename = args.out + '.weights.h5' if not args.out.endswith('.weights.h5') else args.out
+    weights_filename = args.out + \
+        '.weights.h5' if not args.out.endswith('.weights.h5') else args.out
     model.save_weights(weights_filename)
     with open(args.out+'.log', 'w') as f:
         f.write(str((hist.params, hist.history)))
 if args.eval:
-    E = ToricCode(L).E(args.Zstab,args.Xstab)
+    E = ToricCode(L).E(args.Zstab, args.Xstab)
     both = args.Zstab and args.Xstab
     if both:
         Hz = ToricCode(L).H(True, False)
@@ -131,7 +132,8 @@ if args.eval:
         size = len(y_test)
     else:
         size = args.onthefly[1]
-        stabflipgen = data_generator(H, out_dimZ, out_dimX, in_dim, args.prob, batch_size=1, size=size)
+        stabflipgen = data_generator(
+            H, out_dimZ, out_dimX, in_dim, args.prob, batch_size=1, size=size)
     full_log = np.zeros((size, E.shape[0]+args.Zstab+args.Xstab), dtype=int)
     for i, (stab, flips) in tqdm.tqdm(enumerate(stabflipgen), total=size):
         if args.normcenterstab:
@@ -143,28 +145,30 @@ if args.eval:
             pred = undo_normcentererr(pred, args.prob)
         stab = stab.ravel()
         flips = flips.ravel()
-        sample = pred>np.random.uniform(size=outlen)
+        sample = pred > np.random.uniform(size=outlen)
         if both:
-            attemptsZ = smart_sample(Hz, stab[:inlen//2], pred[:outlen//2], sample[:outlen//2], args.giveup)
-            attemptsX = smart_sample(Hx, stab[inlen//2:], pred[outlen//2:], sample[outlen//2:], args.giveup)
+            attemptsZ = smart_sample(
+                Hz, stab[:inlen//2], pred[:outlen//2], sample[:outlen//2], args.giveup)
+            attemptsX = smart_sample(
+                Hx, stab[inlen//2:], pred[outlen//2:], sample[outlen//2:], args.giveup)
         else:
             attempts = smart_sample(H, stab, pred, sample, args.giveup)
-        errors = E.dot((sample+flips)%2)%2
-        if np.any(errors) or np.any(stab!=H.dot(sample)%2):
+        errors = E.dot((sample+flips) % 2) % 2
+        if np.any(errors) or np.any(stab != H.dot(sample) % 2):
             c += 1
             if both:
                 cz += np.any(errors[:len(errors)//2])
                 cx += np.any(errors[len(errors)//2:])
         if both:
-            full_log[i,:-2] = errors
-            full_log[i,-2] = attemptsZ
-            full_log[i,-1] = attemptsX
+            full_log[i, :-2] = errors
+            full_log[i, -2] = attemptsZ
+            full_log[i, -1] = attemptsX
         else:
-            full_log[i,:-1] = errors
-            full_log[i,-1] = attempts
+            full_log[i, :-1] = errors
+            full_log[i, -1] = attempts
     with open(args.out+'.eval', 'w') as f:
         if both:
-            f.write(str(((1-c/size),(1-cz/size),(1-cx/size))))
+            f.write(str(((1-c/size), (1-cz/size), (1-cx/size))))
         else:
             f.write(str(((1-c/size),)))
     np.savetxt(args.out+'.eval.log', full_log, fmt='%d')

@@ -1,3 +1,5 @@
+import numpy as np
+from codes import generate_training_data
 import argparse
 
 parser = argparse.ArgumentParser(description='Generate single-shot training data.',
@@ -22,13 +24,11 @@ parser.add_argument('--prob', type=float, default=0.9,
 
 args = parser.parse_args()
 
-from codes import generate_training_data
-import numpy as np
 
 res, _ = generate_training_data(l=args.dist,
                                 p=args.prob,
                                 train_size=args.ntrain,
                                 test_size=args.nval,
-                               )
+                                )
 
 np.savez_compressed(args.out, *res)

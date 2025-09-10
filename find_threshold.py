@@ -1,3 +1,6 @@
+from tqdm import tqdm
+import numpy as np
+from codes import find_threshold, sample
 import argparse
 
 parser = argparse.ArgumentParser(description='Find the threshold of a code.',
@@ -42,17 +45,15 @@ parser.add_argument('--steps', type=int, default=10,
 args = parser.parse_args()
 print(args)
 
-from codes import find_threshold, sample
-import numpy as np
-from tqdm import tqdm
 
 if args.dist2:
     find_threshold(Lsmall=args.dist, Llarge=args.dist2,
-		   p=(args.plow+args.phigh)/2, high=args.phigh, low=args.plow,
-		   samples=args.samples, logfile=args.out)
+                   p=(args.plow+args.phigh)/2, high=args.phigh, low=args.plow,
+                   samples=args.samples, logfile=args.out)
 else:
     ps = np.linspace(args.plow, args.phigh, args.steps+1)[:-1]
     r = []
     for p in tqdm(ps):
         r.append(sample(args.dist, p, args.samples))
-        np.savetxt(args.out, np.vstack([ps[:len(r)], np.array(r).T]), fmt='%.8e')
+        np.savetxt(args.out, np.vstack(
+            [ps[:len(r)], np.array(r).T]), fmt='%.8e')
