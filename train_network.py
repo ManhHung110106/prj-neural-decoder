@@ -110,9 +110,11 @@ if args.epochs:
                              normcenterstab=args.normcenterstab, normcentererr=args.normcentererr)
         val = data_generator(H, out_dimZ, out_dimX, in_dim, args.prob, args.batch,
                              normcenterstab=args.normcenterstab, normcentererr=args.normcentererr)
-        hist = model.fit_generator(dat, args.onthefly[0]//args.batch, args.epochs,
-                                   validation_data=val, validation_steps=args.onthefly[1]//args.batch)
-    model.save_weights(args.out)
+        hist = model.fit(dat, steps_per_epoch=args.onthefly[0]//args.batch, epochs=args.epochs,
+                         validation_data=val, validation_steps=args.onthefly[1]//args.batch)
+    # Add .weights.h5 extension for Keras 3.x compatibility
+    weights_filename = args.out + '.weights.h5' if not args.out.endswith('.weights.h5') else args.out
+    model.save_weights(weights_filename)
     with open(args.out+'.log', 'w') as f:
         f.write(str((hist.params, hist.history)))
 if args.eval:

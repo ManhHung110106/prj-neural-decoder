@@ -1,0 +1,31 @@
+# Neural Network Decoders for Quantum Error Correcting Codes
+# Compatible with Python 3.10 or 3.11 (TensorFlow compatibility issues with 3.12)
+
+# Core ML/DL frameworks
+tensorflow>=2.16.0,<2.21.0
+keras>=3.0.0
+
+# Scientific computing
+numpy>=1.21.0,<2.0.0
+scipy>=1.9.0
+
+# Graph algorithms (for MWPM)
+networkx>=2.8
+
+# Progress bars
+tqdm>=4.64.0
+
+# Optional: Jupyter notebook support
+jupyter>=1.0.0
+ipython>=8.0.0
+
+# Optional: Plotting (mentioned in codes.py)
+matplotlib>=3.5.0
+
+# Optional: For better performance with large arrays
+# numba>=0.56.0
+
+# Development dependencies (optional)
+# pytest>=7.0.0
+# black>=22.0.0
+# flake8>=5.0.0

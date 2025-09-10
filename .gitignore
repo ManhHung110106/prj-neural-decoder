@@ -84,11 +84,18 @@ celerybeat-schedule
 .env
 
 # virtualenv
-venv/
-ENV/
+.venv*
+venv*
+ENV*
+.env*
+*.venv
 
 # Spyder project settings
 .spyderproject
 
 # Rope project settings
 .ropeproject
+
+# ---
+*.h5
+load_model.py

@@ -5,11 +5,11 @@ import keras.backend as K
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation
 from keras.optimizers import Nadam
-from keras.objectives import binary_crossentropy
-from keras.layers.normalization import BatchNormalization
+from keras.losses import binary_crossentropy
+from keras.layers import BatchNormalization
 import tensorflow as tf
 
-F = lambda _: K.cast(_, 'float32') # TODO XXX there must be a better way to calculate mean than this cast-first approach
+F = lambda _: tf.cast(_, 'float32') # TODO XXX there must be a better way to calculate mean than this cast-first approach
 
 
 class CodeCosts:
@@ -20,52 +20,62 @@ class CodeCosts:
         code = code(L)
         H = code.H(Z,X)
         E = code.E(Z,X)
-        self.H = K.variable(value=H) # TODO should be sparse
-        self.E = K.variable(value=E) # TODO should be sparse
+        self.H = tf.Variable(initial_value=H, trainable=False, dtype=tf.float32) # TODO should be sparse
+        self.E = tf.Variable(initial_value=E, trainable=False, dtype=tf.float32) # TODO should be sparse
         self.p = normcentererr_p
     def exact_reversal(self, y_true, y_pred):
         "Fraction exactly predicted qubit flips."
         if self.p:
             y_pred = undo_normcentererr(y_pred, self.p)
             y_true = undo_normcentererr(y_true, self.p)
-        return K.mean(F(K.all(K.equal(y_true, K.round(y_pred)), axis=-1)))
+        return tf.reduce_mean(F(tf.reduce_all(tf.equal(y_true, tf.round(y_pred)), axis=-1)))
     def non_triv_stab_expanded(self, y_true, y_pred):
         "Whether the stabilizer after correction is not trivial."
         if self.p:
             y_pred = undo_normcentererr(y_pred, self.p)
             y_true = undo_normcentererr(y_true, self.p)
-        return K.any(K.dot(self.H, K.transpose((K.round(y_pred)+y_true)%2))%2, axis=0)
+        # Cast to same dtype to avoid type mismatch
+        y_pred_rounded = tf.cast(tf.round(y_pred), tf.float32)
+        y_true_cast = tf.cast(y_true, tf.float32)
+        correction = tf.cast((y_pred_rounded + y_true_cast) % 2, tf.float32)
+        return tf.reduce_any(tf.cast(tf.matmul(self.H, tf.transpose(correction)) % 2, tf.bool), axis=0)
     def logic_error_expanded(self, y_true, y_pred):
         "Whether there is a logical error after correction."
         if self.p:
             y_pred = undo_normcentererr(y_pred, self.p)
             y_true = undo_normcentererr(y_true, self.p)
-        return K.any(K.dot(self.E, K.transpose((K.round(y_pred)+y_true)%2))%2, axis=0)
+        # Cast to same dtype to avoid type mismatch
+        y_pred_rounded = tf.cast(tf.round(y_pred), tf.float32)
+        y_true_cast = tf.cast(y_true, tf.float32)
+        correction = tf.cast((y_pred_rounded + y_true_cast) % 2, tf.float32)
+        return tf.reduce_any(tf.cast(tf.matmul(self.E, tf.transpose(correction)) % 2, tf.bool), axis=0)
     def triv_stab(self, y_true, y_pred):
         "Fraction trivial stabilizer after corrections."
-        return 1-K.mean(F(self.non_triv_stab_expanded(y_true, y_pred)))
+        return 1-tf.reduce_mean(F(self.non_triv_stab_expanded(y_true, y_pred)))
     def no_error(self, y_true, y_pred):
         "Fraction no logical errors after corrections."
-        return 1-K.mean(F(self.logic_error_expanded(y_true, y_pred)))
+        return 1-tf.reduce_mean(F(self.logic_error_expanded(y_true, y_pred)))
     def triv_no_error(self, y_true, y_pred):
         "Fraction with trivial stabilizer and no error."
         # TODO XXX Those casts (the F function) should not be there! This should be logical operations
         triv_stab = 1 - F(self.non_triv_stab_expanded(y_true, y_pred))
         no_err    = 1 - F(self.logic_error_expanded(y_true, y_pred))
-        return K.mean(no_err*triv_stab)
+        return tf.reduce_mean(no_err*triv_stab)
     def e_binary_crossentropy(self, y_true, y_pred):
         if self.p:
             y_pred = undo_normcentererr(y_pred, self.p)
             y_true = undo_normcentererr(y_true, self.p)
-        return K.mean(K.binary_crossentropy(y_pred, y_true), axis=-1)
+        return tf.reduce_mean(tf.keras.losses.binary_crossentropy(y_true, y_pred), axis=-1)
     def s_binary_crossentropy(self, y_true, y_pred):
         if self.p:
             y_pred = undo_normcentererr(y_pred, self.p)
             y_true = undo_normcentererr(y_true, self.p)
-        s_true = K.dot(y_true, K.transpose(self.H))%2
+        # Cast to avoid type mismatch
+        y_true_cast = tf.cast(y_true, tf.float32)
+        s_true = tf.cast(tf.matmul(y_true_cast, tf.transpose(self.H)) % 2, tf.float32)
         twopminusone = 2*y_pred-1
-        s_pred = ( 1 - tf.real(K.exp(K.dot(K.log(tf.cast(twopminusone, tf.complex64)), tf.cast(K.transpose(self.H), tf.complex64)))) ) / 2
-        return K.mean(K.binary_crossentropy(s_pred, s_true), axis=-1)
+        s_pred = ( 1 - tf.math.real(tf.exp(tf.matmul(tf.math.log(tf.cast(twopminusone, tf.complex64)), tf.cast(tf.transpose(self.H), tf.complex64)))) ) / 2
+        return tf.reduce_mean(tf.keras.losses.binary_crossentropy(s_true, s_pred), axis=-1)
     def se_binary_crossentropy(self, y_true, y_pred):
         return 2./3.*self.e_binary_crossentropy(y_true, y_pred) + 1./3.*self.s_binary_crossentropy(y_true, y_pred)
 
@@ -94,7 +104,7 @@ def create_model(L, hidden_sizes=[4], hidden_act='tanh', act='sigmoid', loss='bi
               's_binary_crossentropy':c.s_binary_crossentropy,
               'se_binary_crossentropy':c.se_binary_crossentropy}
     model.compile(loss=losses.get(loss,loss),
-                  optimizer=Nadam(lr=learning_rate),
+                  optimizer=Nadam(learning_rate=learning_rate),
                   metrics=[c.triv_no_error, c.e_binary_crossentropy, c.s_binary_crossentropy]
                  )
     return model
@@ -134,8 +144,8 @@ def data_generator(H, out_dimZ, out_dimX, in_dim, p, batch_size=512, size=None,
             flips = do_normcentererr(flips, p)
         yield (stabs, flips)
         c += 1
-        if size and c==size:
-            raise StopIteration
+        if size and c >= size:
+            return
 
 def do_normcenterstab(stabs, p):
     avg = (1-p)*2/3
